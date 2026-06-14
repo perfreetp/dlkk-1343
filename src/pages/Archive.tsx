@@ -46,6 +46,9 @@ import {
   Share2,
   FileDown,
   RefreshCw,
+  Edit2,
+  Trash2,
+  ListOrdered,
 } from 'lucide-react'
 import {
   LineChart,
@@ -97,7 +100,13 @@ function aggregateListenerData(episodes: Episode[]) {
     .map(([date, data]) => ({ ...data, date }))
 }
 
-function EpisodeDetailModal({ episode, open, onClose }: { episode: Episode | null; open: boolean; onClose: () => void }) {
+function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData }: {
+  episode: Episode | null
+  open: boolean
+  onClose: () => void
+  onEditData: (episodeId: string, data: ListenerData) => void
+  onDeleteData: (episodeId: string, dataId: string) => void
+}) {
   const getSeason = useStore((s) => s.getSeasonById)
   const getMember = useStore((s) => s.getMemberById)
   const getGuest = useStore((s) => s.getGuestById)
@@ -196,6 +205,58 @@ function EpisodeDetailModal({ episode, open, onClose }: { episode: Episode | nul
           </ResponsiveContainer>
         </Card>
 
+        <Card
+          title={<span className="font-semibold flex items-center gap-2"><ListOrdered size={16} />收听数据明细</span>}
+          className="!rounded-2xl !border-0 !shadow-sm"
+        >
+          <Table
+            size="small"
+            dataSource={episode.listenerData}
+            rowKey="id"
+            pagination={false}
+            columns={[
+              { title: '时间节点', dataIndex: 'date', width: 120 },
+              { title: '播放量', dataIndex: 'plays', width: 100, render: (v) => v.toLocaleString() },
+              { title: '下载量', dataIndex: 'downloads', width: 100, render: (v) => v.toLocaleString() },
+              { title: '新增订阅', dataIndex: 'newSubs', width: 100, render: (v) => v || 0 },
+              { title: '平均收听', dataIndex: 'avgListen', width: 100 },
+              { title: '跳出率', dataIndex: 'dropOff', width: 90, render: (v) => `${v || 0}%` },
+              {
+                title: '最近修改',
+                dataIndex: 'updatedAt',
+                width: 140,
+                render: (v) => <span className="text-xs text-gray-500">{v}</span>,
+              },
+              {
+                title: '操作',
+                key: 'action',
+                width: 120,
+                render: (_, d) => (
+                  <div className="flex gap-2">
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<Edit2 size={14} />}
+                      onClick={() => onEditData(episode.id, d)}
+                    >
+                      编辑
+                    </Button>
+                    <Button
+                      type="link"
+                      size="small"
+                      danger
+                      icon={<Trash2 size={14} />}
+                      onClick={() => onDeleteData(episode.id, d.id)}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </Card>
+
         <Descriptions column={2} size="small" bordered className="bg-white rounded-2xl overflow-hidden">
           <Descriptions.Item label="发布日期">{formatDate(episode.publishedDate)}</Descriptions.Item>
           <Descriptions.Item label="原定截止">{formatDate(episode.deadline)}</Descriptions.Item>
@@ -262,7 +323,7 @@ function AddDataModal({ open, onClose, episodes, onAdd }: {
   open: boolean
   onClose: () => void
   episodes: Episode[]
-  onAdd: (episodeId: string, data: ListenerData) => void
+  onAdd: (episodeId: string, data: Omit<ListenerData, 'id' | 'createdAt' | 'updatedAt'>) => void
 }) {
   const [form] = Form.useForm()
   return (
@@ -275,11 +336,11 @@ function AddDataModal({ open, onClose, episodes, onAdd }: {
       onOk={() => form.validateFields().then((v) => {
         onAdd(v.episodeId, {
           date: v.date,
-          plays: v.plays,
-          downloads: v.downloads,
+          plays: Number(v.plays),
+          downloads: Number(v.downloads),
           avgListen: v.avgListen || '00:00',
-          newSubs: v.newSubs || 0,
-          dropOff: v.dropOff || 0,
+          newSubs: Number(v.newSubs || 0),
+          dropOff: Number(v.dropOff || 0),
         })
         form.resetFields()
         message.success('收听数据已录入')
@@ -325,8 +386,84 @@ function AddDataModal({ open, onClose, episodes, onAdd }: {
   )
 }
 
+function EditDataModal({ open, onClose, data, onSave }: {
+  open: boolean
+  onClose: () => void
+  data: ListenerData
+  onSave: (d: Partial<Omit<ListenerData, 'id' | 'createdAt' | 'updatedAt'>>) => void
+}) {
+  const [form] = Form.useForm()
+  return (
+    <Modal
+      open={open}
+      onCancel={onClose}
+      title={<span className="font-semibold flex items-center gap-2"><Edit2 size={16} />编辑收听数据</span>}
+      okText="保存"
+      cancelText="取消"
+      onOk={() => form.validateFields().then((v) => {
+        onSave({
+          date: v.date,
+          plays: Number(v.plays),
+          downloads: Number(v.downloads),
+          avgListen: v.avgListen || '00:00',
+          newSubs: Number(v.newSubs || 0),
+          dropOff: Number(v.dropOff || 0),
+        })
+        message.success('已更新')
+        onClose()
+      })}
+      afterOpenChange={(visible) => {
+        if (visible) {
+          form.setFieldsValue({
+            date: data.date,
+            plays: data.plays,
+            downloads: data.downloads,
+            avgListen: data.avgListen,
+            newSubs: data.newSubs,
+            dropOff: data.dropOff,
+          })
+        }
+      }}
+    >
+      <Form form={form} layout="vertical" className="mt-4">
+        <Form.Item name="date" label="时间节点" rules={[{ required: true, message: '请输入时间节点' }]}>
+          <Input placeholder="如：Day 1 / 2026-03-10" />
+        </Form.Item>
+        <Row gutter={12}>
+          <Col span={12}>
+            <Form.Item name="plays" label="播放量" rules={[{ required: true, message: '请输入播放量' }]}>
+              <Input type="number" placeholder="0" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="downloads" label="下载量" rules={[{ required: true, message: '请输入下载量' }]}>
+              <Input type="number" placeholder="0" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={12}>
+          <Col span={12}>
+            <Form.Item name="newSubs" label="新增订阅">
+              <Input type="number" placeholder="0" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="avgListen" label="平均收听时长">
+              <Input placeholder="如 38:20" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="dropOff" label="跳出率 (%)">
+          <Input type="number" placeholder="0" />
+        </Form.Item>
+        <div className="text-xs text-gray-400 mt-2">创建于 {data.createdAt} · 最后修改 {data.updatedAt}</div>
+      </Form>
+    </Modal>
+  )
+}
+
 export default function Archive() {
-  const { episodes, seasons, members, getSeasonById, getMemberById, addListenerData } = useStore()
+  const { episodes, seasons, members, getSeasonById, getMemberById, addListenerData, updateListenerData, deleteListenerData } = useStore()
   const [seasonFilter, setSeasonFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -335,6 +472,8 @@ export default function Archive() {
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [addDataOpen, setAddDataOpen] = useState(false)
+  const [editData, setEditData] = useState<{ episodeId: string; data: ListenerData } | null>(null)
+  const editDataOpen = !!editData
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null)
 
   const publishedEpisodes = useMemo(() => {
@@ -413,8 +552,26 @@ export default function Archive() {
     }).sort((a, b) => b.episodes - a.episodes)
   }, [members, dateFilteredEpisodes])
 
-  const handleAddData = (episodeId: string, data: ListenerData) => {
+  const handleAddData = (episodeId: string, data: Omit<ListenerData, 'id' | 'createdAt' | 'updatedAt'>) => {
     addListenerData(episodeId, data)
+  }
+
+  const handleUpdateData = (episodeId: string, dataId: string, data: Partial<Omit<ListenerData, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    updateListenerData(episodeId, dataId, data)
+    setEditData(null)
+  }
+
+  const handleDeleteData = (episodeId: string, dataId: string) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: '确定要删除这条收听数据吗？删除后相关统计会自动更新。',
+      okText: '删除',
+      okType: 'danger',
+      onOk: () => {
+        deleteListenerData(episodeId, dataId)
+        message.success('已删除')
+      },
+    })
   }
 
   const columns: ColumnsType<Episode> = [
@@ -941,8 +1098,22 @@ export default function Archive() {
         )}
       </Card>
 
-      <EpisodeDetailModal episode={selectedEpisode} open={detailOpen} onClose={() => setDetailOpen(false)} />
+      <EpisodeDetailModal
+        episode={selectedEpisode}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        onEditData={(epId, data) => { setEditData({ episodeId: epId, data }) }}
+        onDeleteData={handleDeleteData}
+      />
       <AddDataModal open={addDataOpen} onClose={() => setAddDataOpen(false)} episodes={episodes} onAdd={handleAddData} />
+      {editData && (
+        <EditDataModal
+          open={editDataOpen}
+          onClose={() => setEditData(null)}
+          data={editData.data}
+          onSave={(d) => handleUpdateData(editData.episodeId, editData.data.id, d)}
+        />
+      )}
     </div>
   )
 }

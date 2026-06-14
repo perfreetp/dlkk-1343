@@ -2,21 +2,20 @@ import { useMemo, useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Layout,
-  List,
-  Card,
   Tabs,
+  Card,
+  Checkbox,
+  Select,
+  Button,
   Tag,
   Avatar,
-  Input,
-  Button,
-  Space,
-  Table,
-  Select,
-  Form,
-  Modal,
-  Checkbox,
+  Badge,
   Progress,
-  Steps,
+  Form,
+  Input,
+  Table,
+  List,
+  Modal,
   Timeline,
   Descriptions,
   Typography,
@@ -27,10 +26,12 @@ import {
   App as AntApp,
   Tooltip,
   Segmented,
-  Badge,
+  Radio,
   Row,
   Col,
-  Radio,
+  Space,
+  DatePicker,
+  Steps,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -57,6 +58,14 @@ import {
   Calendar,
   History,
   FolderOpen,
+  ListOrdered,
+  Activity,
+  MessageSquare,
+  CheckCircle,
+  UserPlus,
+  UserMinus,
+  ClipboardCheck,
+  BarChart3,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import {
@@ -80,6 +89,7 @@ import type {
   ClipMarker,
   MusicItem,
   Priority,
+  OutlineItem,
 } from '@/types'
 import dayjs from 'dayjs'
 
@@ -100,6 +110,7 @@ const WORK_TABS = [
   { key: 'cover', label: '封面草稿', icon: Image, desc: '设计版本' },
   { key: 'copy', label: '文案编辑', icon: Edit3, desc: 'Shownotes' },
   { key: 'timeline', label: '时间轴备注', icon: Clock, desc: '剪辑指导' },
+  { key: 'activity', label: '制作记录', icon: Activity, desc: '操作历史' },
 ]
 
 function EpisodeSidebar({
@@ -565,29 +576,67 @@ function GuestPanel({ episode }: { episode: Episode }) {
 function OutlinePanel({ episode }: { episode: Episode }) {
   const toggleOutline = useStore((s) => s.toggleOutline)
   const addOutlineItem = useStore((s) => s.addOutlineItem)
-  const { message } = AntApp.useApp()
+  const updateOutlineItem = useStore((s) => s.updateOutlineItem)
+  const deleteOutlineItem = useStore((s) => s.deleteOutlineItem)
+  const { message, modal } = AntApp.useApp()
   const [showAdd, setShowAdd] = useState(false)
+  const [editingItem, setEditingItem] = useState<OutlineItem | null>(null)
   const [form] = Form.useForm()
   const total = episode.outline.length
   const done = episode.outline.filter((o) => o.done).length
 
   const handleAdd = (values: any) => {
-    addOutlineItem(episode.id, {
-      time: values.time || '',
-      title: values.title,
-      description: values.description || '',
-      notes: values.notes || '',
-    })
+    if (editingItem) {
+      updateOutlineItem(episode.id, editingItem.id, {
+        time: values.time || '',
+        title: values.title,
+        description: values.description || '',
+        notes: values.notes || '',
+      })
+      message.success('提纲已更新')
+    } else {
+      addOutlineItem(episode.id, {
+        time: values.time || '',
+        title: values.title,
+        description: values.description || '',
+        notes: values.notes || '',
+      })
+      message.success('采访问题已添加')
+    }
     setShowAdd(false)
+    setEditingItem(null)
     form.resetFields()
-    message.success('采访问题已添加')
+  }
+
+  const handleEdit = (item: OutlineItem) => {
+    setEditingItem(item)
+    form.setFieldsValue({
+      time: item.time,
+      title: item.title,
+      description: item.description,
+      notes: item.notes,
+    })
+    setShowAdd(true)
+  }
+
+  const handleDelete = (item: OutlineItem) => {
+    modal.confirm({
+      title: '确认删除',
+      content: `确定要删除提纲「${item.title}」吗？`,
+      okText: '删除',
+      okType: 'danger',
+      onOk: () => {
+        deleteOutlineItem(episode.id, item.id)
+        message.success('已删除')
+      },
+    })
   }
 
   return (
     <Card className="!rounded-2xl border-0 shadow-sm"
       title={<div className="flex items-center gap-2"><div className="w-1 h-5 rounded bg-gradient-to-b from-violet-400 to-purple-600" />📋 采访提纲
         <Tag color="blue" className="!ml-2 !rounded-full">{done} / {total} 已准备</Tag></div>}
-      extra={<Button type="primary" size="small" icon={<Plus size={14} />} onClick={() => setShowAdd(true)}>添加问题</Button>}
+      extra={<Button type="primary" size="small" icon={<Plus size={14} />} onClick={() => { setEditingItem(null); form.resetFields(); setShowAdd(true) }}>添加问题</Button>}
     >
       {episode.outline.length === 0 ? (
         <Empty description="还没有提纲，先梳理一下问题吧" />
@@ -603,15 +652,25 @@ function OutlinePanel({ episode }: { episode: Episode }) {
                     {o.time && <Tag color="gold" className="!rounded-full !text-sm !mb-0 !font-mono !font-semibold">⏱ {o.time}</Tag>}
                     <span className={`font-semibold ${o.done ? 'text-gray-400 line-through' : 'text-gray-900'}`}>Q{idx + 1}. {o.title}</span>
                   </div>
+                  <div className="flex items-center gap-1">
+                    <Button type="text" size="small" icon={<Edit3 size={14} />} onClick={() => handleEdit(o)} className="!text-gray-400 hover:!text-blue-600 !p-1" />
+                    <Button type="text" size="small" icon={<Trash2 size={14} />} onClick={() => handleDelete(o)} className="!text-gray-400 hover:!text-red-500 !p-1" />
+                  </div>
                 </div>
                 <Paragraph className={`!mb-1 text-sm ${o.done ? 'text-gray-400' : 'text-gray-600'}`}>{o.description}</Paragraph>
                 {o.notes && <div className="text-xs text-gray-500 bg-gray-50 rounded p-2 inline-block">💡 {o.notes}</div>}
+                <div className="text-xs text-gray-400 mt-2">最近修改：{o.updatedAt}</div>
               </div>
             ),
           }))}
         />
       )}
-      <Modal title="添加采访问题" open={showAdd} onCancel={() => setShowAdd(false)} onOk={() => form.submit()}>
+      <Modal
+        title={editingItem ? '编辑采访问题' : '添加采访问题'}
+        open={showAdd}
+        onCancel={() => { setShowAdd(false); setEditingItem(null) }}
+        onOk={() => form.submit()}
+      >
         <Form form={form} layout="vertical" onFinish={handleAdd}>
           <Form.Item label="时间点" name="time"><Input prefix={<Clock size={14} />} placeholder="例如 08:30，可选" /></Form.Item>
           <Form.Item label="问题标题" name="title" rules={[{ required: true }]}><Input placeholder="问题的一句话概括" /></Form.Item>
@@ -812,24 +871,62 @@ function MistakePanel({ episode }: { episode: Episode }) {
 function EditPanel({ episode }: { episode: Episode }) {
   const toggleEditTodo = useStore((s) => s.toggleEditTodo)
   const addEditTodo = useStore((s) => s.addEditTodo)
+  const updateEditTodo = useStore((s) => s.updateEditTodo)
+  const deleteEditTodo = useStore((s) => s.deleteEditTodo)
   const members = useStore((s) => s.members)
-  const { message } = AntApp.useApp()
+  const { message, modal } = AntApp.useApp()
   const [showAdd, setShowAdd] = useState(false)
+  const [editingTodo, setEditingTodo] = useState<EditTodo | null>(null)
   const [form] = Form.useForm()
   const total = episode.editTodos.length
   const done = episode.editTodos.filter((t) => t.done).length
 
   const handleAdd = (values: any) => {
-    addEditTodo(episode.id, {
-      content: values.content,
-      assigneeId: values.assigneeId,
-      deadline: values.deadline,
-      priority: values.priority,
-      done: false,
-    })
+    if (editingTodo) {
+      updateEditTodo(episode.id, editingTodo.id, {
+        content: values.content,
+        assigneeId: values.assigneeId,
+        deadline: values.deadline,
+        priority: values.priority,
+      })
+      message.success('任务已更新')
+    } else {
+      addEditTodo(episode.id, {
+        content: values.content,
+        assigneeId: values.assigneeId,
+        deadline: values.deadline,
+        priority: values.priority,
+        done: false,
+      })
+      message.success('剪辑任务已添加')
+    }
     setShowAdd(false)
+    setEditingTodo(null)
     form.resetFields()
-    message.success('剪辑任务已添加')
+  }
+
+  const handleEdit = (todo: EditTodo) => {
+    setEditingTodo(todo)
+    form.setFieldsValue({
+      content: todo.content,
+      assigneeId: todo.assigneeId,
+      deadline: todo.deadline,
+      priority: todo.priority,
+    })
+    setShowAdd(true)
+  }
+
+  const handleDelete = (todo: EditTodo) => {
+    modal.confirm({
+      title: '确认删除',
+      content: `确定要删除剪辑任务「${todo.content.slice(0, 20)}...」吗？`,
+      okText: '删除',
+      okType: 'danger',
+      onOk: () => {
+        deleteEditTodo(episode.id, todo.id)
+        message.success('已删除')
+      },
+    })
   }
 
   const columns: ColumnsType<EditTodo> = [
@@ -837,7 +934,12 @@ function EditPanel({ episode }: { episode: Episode }) {
     {
       title: '任务内容',
       dataIndex: 'content',
-      render: (v, r) => <div className={`font-medium ${r.done ? 'line-through text-gray-400' : 'text-gray-900'}`}>{v}</div>,
+      render: (v, r) => (
+        <div>
+          <div className={`font-medium ${r.done ? 'line-through text-gray-400' : 'text-gray-900'}`}>{v}</div>
+          <div className="text-xs text-gray-400 mt-0.5">最近修改：{r.updatedAt}</div>
+        </div>
+      ),
     },
     {
       title: '优先级',
@@ -879,10 +981,10 @@ function EditPanel({ episode }: { episode: Episode }) {
     {
       title: '操作',
       width: 100,
-      render: () => (
+      render: (_, r) => (
         <Space size="small">
-          <Button size="small" type="text">编辑</Button>
-          <Button size="small" type="text" danger icon={<Trash2 size={12} />} />
+          <Button size="small" type="text" onClick={() => handleEdit(r)}>编辑</Button>
+          <Button size="small" type="text" danger icon={<Trash2 size={12} />} onClick={() => handleDelete(r)} />
         </Space>
       ),
     },
@@ -893,11 +995,16 @@ function EditPanel({ episode }: { episode: Episode }) {
       title={<div className="flex items-center gap-2"><div className="w-1 h-5 rounded bg-gradient-to-b from-orange-400 to-amber-600" />✅ 剪辑待办
         <Tag color="blue" className="!rounded-full !ml-2">{done} / {total}</Tag>
         <Progress percent={total ? Math.round((done / total) * 100) : 0} showInfo={false} size="small" className="!w-32 !mb-0" /></div>}
-      extra={<Button type="primary" icon={<Plus size={14} />} onClick={() => setShowAdd(true)}>添加任务</Button>}
+      extra={<Button type="primary" icon={<Plus size={14} />} onClick={() => { setEditingTodo(null); form.resetFields(); setShowAdd(true) }}>添加任务</Button>}
     >
       <Table columns={columns} dataSource={episode.editTodos} rowKey="id" size="middle" pagination={false}
         rowClassName={(r) => (r.done ? 'opacity-60' : '')} locale={{ emptyText: <Empty description="暂无剪辑任务" /> }} />
-      <Modal title="添加剪辑任务" open={showAdd} onCancel={() => setShowAdd(false)} onOk={() => form.submit()}>
+      <Modal
+        title={editingTodo ? '编辑剪辑任务' : '添加剪辑任务'}
+        open={showAdd}
+        onCancel={() => { setShowAdd(false); setEditingTodo(null) }}
+        onOk={() => form.submit()}
+      >
         <Form form={form} layout="vertical" onFinish={handleAdd}>
           <Form.Item label="任务内容" name="content" rules={[{ required: true }]}>
             <TextArea rows={2} placeholder="需要做的具体事情" />
@@ -1112,6 +1219,115 @@ function TimelinePanel({ episode }: { episode: Episode }) {
   )
 }
 
+const ACTION_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
+  status_change: { icon: Check, color: '#10b981', bg: '#d1fae5', label: '状态变更' },
+  review_added: { icon: MessageSquare, color: '#8b5cf6', bg: '#f5f3ff', label: '审核意见' },
+  review_resolved: { icon: CheckCircle, color: '#10b981', bg: '#d1fae5', label: '审核解决' },
+  guest_added: { icon: UserPlus, color: '#3b82f6', bg: '#dbeafe', label: '嘉宾加入' },
+  guest_removed: { icon: UserMinus, color: '#ef4444', bg: '#fee2e2', label: '嘉宾移除' },
+  outline_added: { icon: FileText, color: '#8b5cf6', bg: '#f5f3ff', label: '提纲新增' },
+  outline_updated: { icon: Edit3, color: '#8b5cf6', bg: '#f5f3ff', label: '提纲更新' },
+  outline_deleted: { icon: Trash2, color: '#ef4444', bg: '#fee2e2', label: '提纲删除' },
+  outline_toggled: { icon: CheckSquare, color: '#10b981', bg: '#d1fae5', label: '提纲状态' },
+  edit_todo_added: { icon: CheckSquare, color: '#f59e0b', bg: '#fef3c7', label: '待办新增' },
+  edit_todo_updated: { icon: Edit3, color: '#f59e0b', bg: '#fef3c7', label: '待办更新' },
+  edit_todo_deleted: { icon: Trash2, color: '#ef4444', bg: '#fee2e2', label: '待办删除' },
+  edit_todo_toggled: { icon: Check, color: '#10b981', bg: '#d1fae5', label: '待办完成' },
+  mistake_toggled: { icon: AlertCircle, color: '#ef4444', bg: '#fee2e2', label: '口误状态' },
+  publish_check_updated: { icon: ClipboardCheck, color: '#6366f1', bg: '#e0e7ff', label: '发布检查' },
+  listener_data_added: { icon: BarChart3, color: '#0ea5e9', bg: '#e0f2fe', label: '数据新增' },
+  listener_data_updated: { icon: Edit3, color: '#0ea5e9', bg: '#e0f2fe', label: '数据更新' },
+  listener_data_deleted: { icon: Trash2, color: '#ef4444', bg: '#fee2e2', label: '数据删除' },
+}
+
+function ActivityLogPanel({ episode }: { episode: Episode }) {
+  const getMember = useStore((s) => s.getMemberById)
+  const sortedLogs = useMemo(() =>
+    [...episode.activityLog].sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
+    [episode.activityLog],
+  )
+
+  const groupByDate = useMemo(() => {
+    const groups: Record<string, typeof sortedLogs> = {}
+    for (const log of sortedLogs) {
+      const date = log.timestamp.split(' ')[0]
+      if (!groups[date]) groups[date] = []
+      groups[date].push(log)
+    }
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [sortedLogs])
+
+  return (
+    <Card className="!rounded-2xl border-0 shadow-sm"
+      title={<div className="flex items-center gap-2"><div className="w-1 h-5 rounded bg-gradient-to-b from-indigo-400 to-violet-600" />📋 制作记录
+        <Tag color="blue" className="!ml-2 !rounded-full">{episode.activityLog.length} 条记录</Tag></div>}
+    >
+      {sortedLogs.length === 0 ? (
+        <Empty description="还没有操作记录" />
+      ) : (
+        <div className="space-y-8">
+          {groupByDate.map(([date, logs]) => (
+            <div key={date}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-sm font-semibold text-gray-500">{formatDate(date)}</div>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+              <Timeline
+                mode="left"
+                items={logs.map((log) => {
+                  const cfg = ACTION_CONFIG[log.action] || {
+                    icon: Activity,
+                    color: '#6b7280',
+                    bg: '#f3f4f6',
+                    label: log.action,
+                  }
+                  const member = getMember(log.memberId)
+                  return {
+                    dot: (
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm"
+                        style={{ background: cfg.bg }}
+                      >
+                        <cfg.icon size={16} style={{ color: cfg.color }} />
+                      </div>
+                    ),
+                    label: (
+                      <div className="text-xs text-gray-400 pt-2.5">
+                        {log.timestamp.split(' ')[1]}
+                      </div>
+                    ),
+                    children: (
+                      <div className="pb-5 pl-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Tag
+                            className="!rounded-full !text-xs !mb-0"
+                            style={{ background: cfg.bg, color: cfg.color, border: 'none' }}
+                          >
+                            {cfg.label}
+                          </Tag>
+                          {member && (
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <Avatar size={16} style={{ backgroundColor: member.color, fontSize: 8 }}>
+                                {member.name[0]}
+                              </Avatar>
+                              {member.name}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-700">{log.detail}</div>
+                      </div>
+                    ),
+                  }
+                })}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 export default function EpisodeWorkspace() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -1152,6 +1368,7 @@ export default function EpisodeWorkspace() {
       case 'cover': return <CoverPanel episode={currentEpisode} />
       case 'copy': return <CopyPanel episode={currentEpisode} />
       case 'timeline': return <TimelinePanel episode={currentEpisode} />
+      case 'activity': return <ActivityLogPanel episode={currentEpisode} />
       default: return null
     }
   }

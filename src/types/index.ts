@@ -52,6 +52,8 @@ export interface OutlineItem {
   description: string
   notes: string
   done: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface RecordingItem {
@@ -81,6 +83,8 @@ export interface EditTodo {
   deadline: string
   priority: Priority
   done: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface MusicItem {
@@ -115,12 +119,44 @@ export interface SponsorSlot {
 }
 
 export interface ListenerData {
+  id: string
   date: string
   plays: number
   downloads: number
   avgListen: string
   newSubs: number
   dropOff: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type ActivityAction =
+  | 'status_change'
+  | 'review_added'
+  | 'review_resolved'
+  | 'guest_added'
+  | 'guest_removed'
+  | 'outline_added'
+  | 'outline_updated'
+  | 'outline_deleted'
+  | 'outline_toggled'
+  | 'edit_todo_added'
+  | 'edit_todo_updated'
+  | 'edit_todo_deleted'
+  | 'edit_todo_toggled'
+  | 'mistake_toggled'
+  | 'publish_check_updated'
+  | 'listener_data_added'
+  | 'listener_data_updated'
+  | 'listener_data_deleted'
+
+export interface ActivityLog {
+  id: string
+  action: ActivityAction
+  memberId: string
+  timestamp: string
+  detail: string
+  meta?: Record<string, any>
 }
 
 export interface Episode {
@@ -164,6 +200,7 @@ export interface Episode {
   deadline: string
   assigneeIds: string[]
   listenerData: ListenerData[]
+  activityLog: ActivityLog[]
   createdAt: string
   updatedAt: string
 }

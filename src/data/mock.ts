@@ -7,6 +7,7 @@ import type {
   TopicIdea,
   MaterialAsset,
 } from '@/types'
+import dayjs from 'dayjs'
 
 export const mockMembers: Member[] = [
   { id: 'm1', name: '林小雨', role: '主持人 / 主理人', avatar: '', color: '#4361ee' },
@@ -77,7 +78,7 @@ const baseEpisode = {
   },
 }
 
-export const mockEpisodes: Episode[] = [
+export const mockEpisodes = [
   {
     id: 'e1',
     seasonId: 's1',
@@ -613,9 +614,92 @@ export const mockMaterials: MaterialAsset[] = [
   { id: 'ma12', type: 'document', name: '制作流程SOP_v2.docx', path: '/docs/SOP_v2.docx', size: '450 KB', episodeId: '', tags: ['文档', 'SOP'], uploadedBy: 'm1', uploadedAt: '2026-03-05', notes: '最新版制作流程' },
 ]
 
+const genId = (prefix: string, idx: number) => `${prefix}${Date.now()}_${idx}`
+const now = dayjs().format('YYYY-MM-DD HH:mm:ss')
+
+const enrichedEpisodes = mockEpisodes.map((ep) => ({
+  ...ep,
+  outline: ep.outline.map((o, i) => ({
+    ...o,
+    createdAt: ep.createdAt,
+    updatedAt: ep.updatedAt,
+  })),
+  editTodos: ep.editTodos.map((t, i) => ({
+    ...t,
+    createdAt: ep.createdAt,
+    updatedAt: ep.updatedAt,
+  })),
+  listenerData: ep.listenerData.map((d, i) => ({
+    ...d,
+    id: `ld_${ep.id}_${i}`,
+    createdAt: ep.updatedAt,
+    updatedAt: ep.updatedAt,
+  })),
+  activityLog: [
+    {
+      id: `log_${ep.id}_1`,
+      action: 'status_change' as const,
+      memberId: 'm1',
+      timestamp: ep.createdAt,
+      detail: `创建单集「${ep.title}」`,
+    },
+    {
+      id: `log_${ep.id}_2`,
+      action: 'outline_added' as const,
+      memberId: 'm1',
+      timestamp: dayjs(ep.createdAt).add(1, 'day').format('YYYY-MM-DD HH:mm:ss'),
+      detail: `新增 ${ep.outline.length} 条采访提纲`,
+    },
+    ...(ep.outline.length > 0
+      ? [
+          {
+            id: `log_${ep.id}_3`,
+            action: 'status_change' as const,
+            memberId: 'm2',
+            timestamp: dayjs(ep.createdAt).add(2, 'day').format('YYYY-MM-DD HH:mm:ss'),
+            detail: `状态变更：选题 → 筹备`,
+          },
+        ]
+      : []),
+    ...(ep.guestIds.length > 0
+      ? [
+          {
+            id: `log_${ep.id}_4`,
+            action: 'guest_added' as const,
+            memberId: 'm3',
+            timestamp: dayjs(ep.createdAt).add(3, 'day').format('YYYY-MM-DD HH:mm:ss'),
+            detail: `邀请 ${ep.guestIds.length} 位嘉宾参与本期节目`,
+          },
+        ]
+      : []),
+    ...(ep.editTodos.length > 0
+      ? [
+          {
+            id: `log_${ep.id}_5`,
+            action: 'edit_todo_added' as const,
+            memberId: 'm5',
+            timestamp: dayjs(ep.createdAt).add(5, 'day').format('YYYY-MM-DD HH:mm:ss'),
+            detail: `新增 ${ep.editTodos.length} 条剪辑待办`,
+          },
+        ]
+      : []),
+    ...(ep.status === 'published'
+      ? [
+          {
+            id: `log_${ep.id}_6`,
+            action: 'status_change' as const,
+            memberId: 'm1',
+            timestamp: ep.publishedDate || ep.updatedAt,
+            detail: `节目发布！🎉`,
+          },
+        ]
+      : []),
+  ],
+})) as Episode[]
+
 export const mockInitialState: AppState = {
   seasons: mockSeasons,
-  episodes: mockEpisodes,
+  episodes: enrichedEpisodes,
   members: mockMembers,
   guests: mockGuests,
   topics: mockTopics,
