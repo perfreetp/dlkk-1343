@@ -100,12 +100,13 @@ function aggregateListenerData(episodes: Episode[]) {
     .map(([date, data]) => ({ ...data, date }))
 }
 
-function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData }: {
+function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData, onExportData }: {
   episode: Episode | null
   open: boolean
   onClose: () => void
   onEditData: (episodeId: string, data: ListenerData) => void
   onDeleteData: (episodeId: string, dataId: string) => void
+  onExportData: (episode: Episode) => void
 }) {
   const getSeason = useStore((s) => s.getSeasonById)
   const getMember = useStore((s) => s.getMemberById)
@@ -208,6 +209,16 @@ function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData }
         <Card
           title={<span className="font-semibold flex items-center gap-2"><ListOrdered size={16} />收听数据明细</span>}
           className="!rounded-2xl !border-0 !shadow-sm"
+          extra={
+            <Button
+              size="small"
+              type="primary"
+              icon={<FileDown size={14} />}
+              onClick={() => onExportData(episode)}
+            >
+              导出报表
+            </Button>
+          }
         >
           <Table
             size="small"
@@ -512,45 +523,45 @@ export default function Archive() {
     let totalPlays = 0
     let totalDownloads = 0
     let totalNewSubs = 0
-    dateFilteredEpisodes.forEach((ep) => {
+    filteredEpisodes.forEach((ep) => {
       ep.listenerData.forEach((d) => {
         totalPlays += d.plays
         totalDownloads += d.downloads
         totalNewSubs += d.newSubs
       })
     })
-    return { totalPlays, totalDownloads, totalNewSubs, totalEpisodes: dateFilteredEpisodes.length }
-  }, [dateFilteredEpisodes])
+    return { totalPlays, totalDownloads, totalNewSubs, totalEpisodes: filteredEpisodes.length }
+  }, [filteredEpisodes])
 
-  const trendData = useMemo(() => aggregateListenerData(dateFilteredEpisodes), [dateFilteredEpisodes])
+  const trendData = useMemo(() => aggregateListenerData(filteredEpisodes), [filteredEpisodes])
 
   const topEpisodes = useMemo(() => {
-    return [...dateFilteredEpisodes]
+    return [...filteredEpisodes]
       .map((ep) => ({
         episode: ep,
         total: ep.listenerData.reduce((s, d) => s + d.plays, 0),
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 5)
-  }, [dateFilteredEpisodes])
+  }, [filteredEpisodes])
 
   const seasonStats = useMemo(() => {
     return seasons
       .filter((s) => s.status !== 'planning')
       .map((s) => {
-        const eps = dateFilteredEpisodes.filter((e) => e.seasonId === s.id)
+        const eps = filteredEpisodes.filter((e) => e.seasonId === s.id)
         const plays = eps.reduce((sum, ep) => sum + ep.listenerData.reduce((s2, d) => s2 + d.plays, 0), 0)
         const downloads = eps.reduce((sum, ep) => sum + ep.listenerData.reduce((s2, d) => s2 + d.downloads, 0), 0)
         return { name: s.name, episodes: eps.length, plays, downloads, color: s.color }
       })
-  }, [seasons, dateFilteredEpisodes])
+  }, [seasons, filteredEpisodes])
 
   const memberContrib = useMemo(() => {
     return members.map((m) => {
-      const count = dateFilteredEpisodes.filter((e) => e.assigneeIds.includes(m.id)).length
+      const count = filteredEpisodes.filter((e) => e.assigneeIds.includes(m.id)).length
       return { name: m.name, episodes: count, color: m.color }
     }).sort((a, b) => b.episodes - a.episodes)
-  }, [members, dateFilteredEpisodes])
+  }, [members, filteredEpisodes])
 
   const handleAddData = (episodeId: string, data: Omit<ListenerData, 'id' | 'createdAt' | 'updatedAt'>) => {
     addListenerData(episodeId, data)
@@ -572,6 +583,53 @@ export default function Archive() {
         message.success('已删除')
       },
     })
+  }
+
+  const handleExportData = (episode: Episode) => {
+    const totalPlays = episode.listenerData.reduce((s, d) => s + d.plays, 0)
+    const totalDownloads = episode.listenerData.reduce((s, d) => s + d.downloads, 0)
+    const totalNewSubs = episode.listenerData.reduce((s, d) => s + d.newSubs, 0)
+
+    const season = getSeasonById(episode.seasonId)
+
+    const header = [
+      '单集收听数据报表',
+      `节目季：${season?.name || ''}`,
+      `单集：EP${String(episode.number).padStart(3, '0')} · ${episode.title}`,
+      `发布日期：${episode.publishedDate || '待发布'}`,
+      '',
+      `汇总统计`,
+      `总播放量,${totalPlays.toLocaleString()}`,
+      `总下载量,${totalDownloads.toLocaleString()}`,
+      `总新增订阅,${totalNewSubs.toLocaleString()}`,
+      `数据条数,${episode.listenerData.length}`,
+      '',
+      '明细数据',
+      '时间节点,播放量,下载量,新增订阅,平均收听,跳出率,最近修改时间',
+    ]
+
+    const rows = episode.listenerData.map((d) => [
+      d.date,
+      d.plays.toLocaleString(),
+      d.downloads.toLocaleString(),
+      d.newSubs || 0,
+      d.avgListen || '',
+      `${d.dropOff || 0}%`,
+      d.updatedAt,
+    ].join(','))
+
+    const csvContent = [...header, ...rows].join('\n')
+    const BOM = '\uFEFF'
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `EP${String(episode.number).padStart(3, '0')}_${episode.title}_收听数据_${dayjs().format('YYYYMMDD')}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    message.success('已导出报表')
   }
 
   const columns: ColumnsType<Episode> = [
@@ -1104,6 +1162,7 @@ export default function Archive() {
         onClose={() => setDetailOpen(false)}
         onEditData={(epId, data) => { setEditData({ episodeId: epId, data }) }}
         onDeleteData={handleDeleteData}
+        onExportData={handleExportData}
       />
       <AddDataModal open={addDataOpen} onClose={() => setAddDataOpen(false)} episodes={episodes} onAdd={handleAddData} />
       {editData && (

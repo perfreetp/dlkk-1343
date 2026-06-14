@@ -428,15 +428,20 @@ function GuestPanel({ episode }: { episode: Episode }) {
   const guests = useStore((s) => s.guests)
   const addGuestToEpisode = useStore((s) => s.addGuestToEpisode)
   const removeGuestFromEpisode = useStore((s) => s.removeGuestFromEpisode)
+  const updateGuestInfo = useStore((s) => s.updateGuestInfo)
   const epGuests = episode.guestIds.map((id) => guests.find((g) => g.id === id)!).filter(Boolean)
   const others = guests.filter((g) => !episode.guestIds.includes(g.id))
-  const { message } = AntApp.useApp()
+  const { message, modal } = AntApp.useApp()
   const [showAll, setShowAll] = useState(false)
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null)
+  const [editingGuestId, setEditingGuestId] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState('')
+  const [editForm] = Form.useForm()
   const displayOthers = (showAll ? others : others.slice(0, 4)).filter(
     (g) => !searchKey || g.name.includes(searchKey) || g.tags.some((t) => t.includes(searchKey)),
   )
+
+  const getGuestInfo = (guestId: string) => episode.guestInfo.find((gi) => gi.guestId === guestId)
 
   const handleInvite = (guestId: string) => {
     addGuestToEpisode(episode.id, guestId)
@@ -444,49 +449,103 @@ function GuestPanel({ episode }: { episode: Episode }) {
     message.success('嘉宾已加入本集')
   }
 
-  const handleRemove = (guestId: string) => {
-    removeGuestFromEpisode(episode.id, guestId)
-    message.info('已从本集移除嘉宾')
+  const handleRemove = (guestId: string, guestName: string) => {
+    modal.confirm({
+      title: '确认移除',
+      content: `确定要从本集移除嘉宾「${guestName}」吗？`,
+      okText: '移除',
+      okType: 'danger',
+      onOk: () => {
+        removeGuestFromEpisode(episode.id, guestId)
+        message.info('已从本集移除嘉宾')
+      },
+    })
   }
 
-  const GuestCard = ({ g, confirmed }: { g: Guest; confirmed: boolean }) => (
-    <div
-      onClick={() => setSelectedGuest(g)}
-      className={`p-4 rounded-xl border-2 cursor-pointer transition hover:shadow-md ${
-        confirmed ? 'border-green-200 bg-green-50/50' : 'border-gray-100 bg-white hover:border-primary-200'
-      }`}
-    >
-      <div className="flex items-start gap-3 mb-3">
-        <Avatar size={48} style={{ backgroundColor: '#6366f1', fontSize: 16 }}>{initials(g.name)}</Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <span className="font-semibold text-gray-900">{g.name}</span>
-            {confirmed && <Tag color="green" className="!rounded-full !text-xs !mb-0 !px-2">✓ 已确认</Tag>}
-            <Rate disabled defaultValue={4.5} count={5} allowHalf className="!text-xs !mb-0" />
+  const handleEdit = (guestId: string) => {
+    const info = getGuestInfo(guestId)
+    if (info) {
+      editForm.setFieldsValue(info)
+      setEditingGuestId(guestId)
+    }
+  }
+
+  const handleSave = async () => {
+    try {
+      const values = await editForm.validateFields()
+      updateGuestInfo(episode.id, editingGuestId!, values)
+      setEditingGuestId(null)
+      editForm.resetFields()
+      message.success('已保存嘉宾信息')
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const STATUS_OPTIONS = [
+    { label: '待联系', value: 'pending' },
+    { label: '已确认', value: 'confirmed' },
+    { label: '已婉拒', value: 'declined' },
+    { label: '已提醒', value: 'reminded' },
+  ]
+
+  const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+    pending: { label: '待联系', color: 'orange' },
+    confirmed: { label: '已确认', color: 'green' },
+    declined: { label: '已婉拒', color: 'red' },
+    reminded: { label: '已提醒', color: 'blue' },
+  }
+
+  const GuestCard = ({ g, confirmed }: { g: Guest; confirmed: boolean }) => {
+    const info = confirmed ? getGuestInfo(g.id) : null
+    const statusCfg = info ? STATUS_CONFIG[info.status] : null
+    return (
+      <div
+        onClick={() => confirmed ? handleEdit(g.id) : setSelectedGuest(g)}
+        className={`p-4 rounded-xl border-2 cursor-pointer transition hover:shadow-md ${
+          confirmed ? 'border-green-200 bg-green-50/50' : 'border-gray-100 bg-white hover:border-primary-200'
+        }`}
+      >
+        <div className="flex items-start gap-3 mb-3">
+          <Avatar size={48} style={{ backgroundColor: '#6366f1', fontSize: 16 }}>{initials(g.name)}</Avatar>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+              <span className="font-semibold text-gray-900">{g.name}</span>
+              {statusCfg && <Tag color={statusCfg.color as any} className="!rounded-full !text-xs !mb-0 !px-2">{statusCfg.label}</Tag>}
+              {confirmed && info?.role && <Tag className="!rounded-full !text-xs !mb-0 !px-2 !bg-purple-100 !text-purple-700 !border-0">{info.role}</Tag>}
+              <Rate disabled defaultValue={4.5} count={5} allowHalf className="!text-xs !mb-0" />
+            </div>
+            <div className="text-sm text-gray-600 line-clamp-1">{g.title}</div>
+            <div className="text-xs text-gray-400">{g.company}</div>
           </div>
-          <div className="text-sm text-gray-600 line-clamp-1">{g.title}</div>
-          <div className="text-xs text-gray-400">{g.company}</div>
         </div>
-      </div>
-      <div className="flex flex-wrap gap-1 mb-3">
-        {g.tags.slice(0, 4).map((t) => <Tag key={t} className="!rounded !text-xs !mb-0">#{t}</Tag>)}
-      </div>
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-500 flex items-center gap-1">
-          <History size={12} /> 已参与 {g.history.length} 期
-        </div>
-        {confirmed ? (
-          <Button size="small" danger type="text" onClick={(e) => { e.stopPropagation(); handleRemove(g.id) }}>
-            移除
-          </Button>
-        ) : (
-          <Button size="small" type="primary" ghost onClick={(e) => { e.stopPropagation(); handleInvite(g.id) }}>
-            邀请
-          </Button>
+        {confirmed && info && (
+          <div className="space-y-2 mb-3">
+            {info.role && <div className="text-xs text-gray-600"><span className="text-gray-400">出场身份：</span>{info.role}</div>}
+            {info.notes && <div className="text-xs text-gray-600 line-clamp-2"><span className="text-gray-400">备注：</span>{info.notes}</div>}
+            {info.updatedAt && <div className="text-xs text-gray-400 flex items-center gap-1"><Clock size={10} />最近修改：{info.updatedAt}</div>}
+          </div>
         )}
+        <div className="flex flex-wrap gap-1 mb-3">
+          {g.tags.slice(0, 4).map((t) => <Tag key={t} className="!rounded !text-xs !mb-0">#{t}</Tag>)}
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-gray-500 flex items-center gap-1">
+            <History size={12} /> 已参与 {g.history.length} 期
+          </div>
+          {confirmed ? (
+            <Button size="small" danger type="text" onClick={(e) => { e.stopPropagation(); handleRemove(g.id, g.name) }}>
+              移除
+            </Button>
+          ) : (
+            <Button size="small" type="primary" ghost onClick={(e) => { e.stopPropagation(); handleInvite(g.id) }}>
+              邀请
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -567,6 +626,65 @@ function GuestPanel({ episode }: { episode: Episode }) {
               <div className="p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm text-gray-700">{selectedGuest.notes}</div>
             </div>
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        title={
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center"><User size={16} className="text-purple-600" /></div>
+            <div>
+              <div className="font-semibold">维护本集嘉宾信息</div>
+              <div className="text-xs text-gray-500">{editingGuestId && guests.find((g) => g.id === editingGuestId)?.name}</div>
+            </div>
+          </div>
+        }
+        open={!!editingGuestId}
+        onCancel={() => { setEditingGuestId(null); editForm.resetFields() }}
+        onOk={handleSave}
+        okText="保存"
+        width={560}
+      >
+        {editingGuestId && (
+          <Form form={editForm} layout="vertical" size="middle" className="mt-4">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  name="status"
+                  label="联系进度"
+                  rules={[{ required: true, message: '请选择联系进度' }]}
+                >
+                  <Select options={STATUS_OPTIONS} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="role"
+                  label="出场身份"
+                >
+                  <Input placeholder="如：主嘉宾、圆桌嘉宾等" />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Form.Item
+              name="reminder"
+              label="录制前提醒"
+            >
+              <Input.TextArea rows={2} placeholder="需要特别提醒嘉宾的注意事项，如录音时间、提纲链接、背景布置等" />
+            </Form.Item>
+            <Form.Item
+              name="notes"
+              label="备注"
+            >
+              <Input.TextArea rows={2} placeholder="其他需要记录的信息" />
+            </Form.Item>
+            {getGuestInfo(editingGuestId) && (
+              <div className="text-xs text-gray-400 pt-2 border-t border-gray-100 flex justify-between">
+                <span>创建时间：{getGuestInfo(editingGuestId)?.createdAt}</span>
+                <span>最近修改：{getGuestInfo(editingGuestId)?.updatedAt}</span>
+              </div>
+            )}
+          </Form>
         )}
       </Modal>
     </div>
@@ -1223,8 +1341,11 @@ const ACTION_CONFIG: Record<string, { icon: any; color: string; bg: string; labe
   status_change: { icon: Check, color: '#10b981', bg: '#d1fae5', label: '状态变更' },
   review_added: { icon: MessageSquare, color: '#8b5cf6', bg: '#f5f3ff', label: '审核意见' },
   review_resolved: { icon: CheckCircle, color: '#10b981', bg: '#d1fae5', label: '审核解决' },
+  review_approved: { icon: CheckCircle, color: '#10b981', bg: '#d1fae5', label: '审核通过' },
+  review_rejected: { icon: AlertCircle, color: '#ef4444', bg: '#fee2e2', label: '打回修改' },
   guest_added: { icon: UserPlus, color: '#3b82f6', bg: '#dbeafe', label: '嘉宾加入' },
   guest_removed: { icon: UserMinus, color: '#ef4444', bg: '#fee2e2', label: '嘉宾移除' },
+  guest_updated: { icon: User, color: '#8b5cf6', bg: '#f5f3ff', label: '嘉宾更新' },
   outline_added: { icon: FileText, color: '#8b5cf6', bg: '#f5f3ff', label: '提纲新增' },
   outline_updated: { icon: Edit3, color: '#8b5cf6', bg: '#f5f3ff', label: '提纲更新' },
   outline_deleted: { icon: Trash2, color: '#ef4444', bg: '#fee2e2', label: '提纲删除' },
@@ -1235,16 +1356,29 @@ const ACTION_CONFIG: Record<string, { icon: any; color: string; bg: string; labe
   edit_todo_toggled: { icon: Check, color: '#10b981', bg: '#d1fae5', label: '待办完成' },
   mistake_toggled: { icon: AlertCircle, color: '#ef4444', bg: '#fee2e2', label: '口误状态' },
   publish_check_updated: { icon: ClipboardCheck, color: '#6366f1', bg: '#e0e7ff', label: '发布检查' },
+  published_date_changed: { icon: Calendar, color: '#f59e0b', bg: '#fef3c7', label: '发布日期调整' },
   listener_data_added: { icon: BarChart3, color: '#0ea5e9', bg: '#e0f2fe', label: '数据新增' },
   listener_data_updated: { icon: Edit3, color: '#0ea5e9', bg: '#e0f2fe', label: '数据更新' },
   listener_data_deleted: { icon: Trash2, color: '#ef4444', bg: '#fee2e2', label: '数据删除' },
 }
 
 function ActivityLogPanel({ episode }: { episode: Episode }) {
+  const members = useStore((s) => s.members)
   const getMember = useStore((s) => s.getMemberById)
+  const [memberFilter, setMemberFilter] = useState<string | null>(null)
+  const [actionFilter, setActionFilter] = useState<string | null>(null)
+
+  const filteredLogs = useMemo(() => {
+    return episode.activityLog.filter((log) => {
+      if (memberFilter && log.memberId !== memberFilter) return false
+      if (actionFilter && log.action !== actionFilter) return false
+      return true
+    })
+  }, [episode.activityLog, memberFilter, actionFilter])
+
   const sortedLogs = useMemo(() =>
-    [...episode.activityLog].sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
-    [episode.activityLog],
+    [...filteredLogs].sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
+    [filteredLogs],
   )
 
   const groupByDate = useMemo(() => {
@@ -1257,13 +1391,54 @@ function ActivityLogPanel({ episode }: { episode: Episode }) {
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]))
   }, [sortedLogs])
 
+  const actionTypeOptions = useMemo(() => {
+    const actionTypes = new Set(episode.activityLog.map((l) => l.action))
+    return Array.from(actionTypes).map((action) => ({
+      label: ACTION_CONFIG[action]?.label || action,
+      value: action,
+    }))
+  }, [episode.activityLog])
+
+  const memberOptions = useMemo(() => {
+    const memberIds = new Set(episode.activityLog.map((l) => l.memberId))
+    return members
+      .filter((m) => memberIds.has(m.id))
+      .map((m) => ({ label: m.name, value: m.id }))
+  }, [members, episode.activityLog])
+
   return (
     <Card className="!rounded-2xl border-0 shadow-sm"
       title={<div className="flex items-center gap-2"><div className="w-1 h-5 rounded bg-gradient-to-b from-indigo-400 to-violet-600" />📋 制作记录
-        <Tag color="blue" className="!ml-2 !rounded-full">{episode.activityLog.length} 条记录</Tag></div>}
+        <Tag color="blue" className="!ml-2 !rounded-full">{episode.activityLog.length} 条记录</Tag>
+        {filteredLogs.length !== episode.activityLog.length && (
+          <Tag color="orange" className="!ml-1 !rounded-full">筛选后 {filteredLogs.length} 条</Tag>
+        )}
+      </div>}
+      extra={
+        <Space size="small">
+          <Select
+            placeholder="按成员筛选"
+            style={{ width: 140 }}
+            size="small"
+            allowClear
+            value={memberFilter}
+            onChange={setMemberFilter}
+            options={memberOptions}
+          />
+          <Select
+            placeholder="按动作类型筛选"
+            style={{ width: 150 }}
+            size="small"
+            allowClear
+            value={actionFilter}
+            onChange={setActionFilter}
+            options={actionTypeOptions}
+          />
+        </Space>
+      }
     >
       {sortedLogs.length === 0 ? (
-        <Empty description="还没有操作记录" />
+        <Empty description={filteredLogs.length === 0 && episode.activityLog.length > 0 ? '没有符合筛选条件的记录' : '还没有操作记录'} />
       ) : (
         <div className="space-y-8">
           {groupByDate.map(([date, logs]) => (
@@ -1271,6 +1446,7 @@ function ActivityLogPanel({ episode }: { episode: Episode }) {
               <div className="flex items-center gap-3 mb-4">
                 <div className="text-sm font-semibold text-gray-500">{formatDate(date)}</div>
                 <div className="flex-1 h-px bg-gray-100" />
+                <Tag className="!rounded-full !text-xs !mb-0">{logs.length} 条</Tag>
               </div>
               <Timeline
                 mode="left"

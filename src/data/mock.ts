@@ -635,6 +635,15 @@ const enrichedEpisodes = mockEpisodes.map((ep) => ({
     createdAt: ep.updatedAt,
     updatedAt: ep.updatedAt,
   })),
+  guestInfo: ep.guestIds.map((gid: string, i: number) => ({
+    guestId: gid,
+    role: ['主嘉宾', '特约评论员', '圆桌嘉宾', '连线嘉宾'][i % 4],
+    status: 'confirmed' as const,
+    reminder: '提前3天发送录音邀请和提纲，提前1天确认设备',
+    notes: '',
+    createdAt: ep.createdAt,
+    updatedAt: ep.updatedAt,
+  })),
   activityLog: [
     {
       id: `log_${ep.id}_1`,

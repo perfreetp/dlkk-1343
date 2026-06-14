@@ -13,6 +13,7 @@ import type {
   ListenerData,
   ActivityAction,
   ActivityLog,
+  EpisodeGuestInfo,
 } from '@/types'
 import { mockInitialState } from '@/data/mock'
 
@@ -51,12 +52,17 @@ interface StoreState extends AppState {
 
   addGuestToEpisode: (episodeId: string, guestId: string, memberId?: string) => void
   removeGuestFromEpisode: (episodeId: string, guestId: string, memberId?: string) => void
+  updateGuestInfo: (episodeId: string, guestId: string, info: Partial<Omit<EpisodeGuestInfo, 'guestId' | 'createdAt'>>, memberId?: string) => void
 
   addListenerData: (episodeId: string, data: Omit<ListenerData, 'id' | 'createdAt' | 'updatedAt'>, memberId?: string) => void
   updateListenerData: (episodeId: string, dataId: string, data: Partial<Omit<ListenerData, 'id' | 'createdAt'>>, memberId?: string) => void
   deleteListenerData: (episodeId: string, dataId: string, memberId?: string) => void
 
   updatePublishCheck: (episodeId: string, key: keyof Episode['publishCheck'], value: any, memberId?: string) => void
+  updatePublishedDate: (episodeId: string, date: string | null, memberId?: string) => void
+
+  approveReview: (episodeId: string, commentId: string, memberId?: string) => void
+  rejectReview: (episodeId: string, commentId: string, memberId?: string) => void
 
   addActivityLog: (episodeId: string, action: ActivityAction, memberId: string, detail: string, meta?: Record<string, any>) => void
 
@@ -421,7 +427,22 @@ export const useStore = create<StoreState>()(
           const guest = get().getGuestById(guestId)
           const episodes = state.episodes.map((e) =>
             e.id === episodeId && !e.guestIds.includes(guestId)
-              ? { ...e, guestIds: [...e.guestIds, guestId] }
+              ? {
+                  ...e,
+                  guestIds: [...e.guestIds, guestId],
+                  guestInfo: [
+                    ...e.guestInfo,
+                    {
+                      guestId,
+                      role: '',
+                      status: 'pending' as const,
+                      reminder: '',
+                      notes: '',
+                      createdAt: now(),
+                      updatedAt: now(),
+                    },
+                  ],
+                }
               : e,
           )
           return {
@@ -440,7 +461,11 @@ export const useStore = create<StoreState>()(
           const guest = get().getGuestById(guestId)
           const episodes = state.episodes.map((e) =>
             e.id === episodeId
-              ? { ...e, guestIds: e.guestIds.filter((id) => id !== guestId) }
+              ? {
+                  ...e,
+                  guestIds: e.guestIds.filter((id) => id !== guestId),
+                  guestInfo: e.guestInfo.filter((gi) => gi.guestId !== guestId),
+                }
               : e,
           )
           return {
@@ -450,6 +475,108 @@ export const useStore = create<StoreState>()(
               'guest_removed',
               memberId,
               `移除嘉宾：${guest?.name}`,
+            ),
+          }
+        }),
+
+      updateGuestInfo: (episodeId, guestId, info, memberId = 'm1') =>
+        set((state) => {
+          const guest = get().getGuestById(guestId)
+          const episodes = state.episodes.map((e) =>
+            e.id === episodeId
+              ? {
+                  ...e,
+                  guestInfo: e.guestInfo.map((gi) =>
+                    gi.guestId === guestId
+                      ? { ...gi, ...info, updatedAt: now() }
+                      : gi,
+                  ),
+                }
+              : e,
+          )
+          const changes = Object.keys(info)
+            .filter((k) => k !== 'updatedAt')
+            .join('、')
+          return {
+            episodes: addLog(
+              episodes,
+              episodeId,
+              'guest_updated',
+              memberId,
+              `更新嘉宾「${guest?.name}」信息：${changes}`,
+            ),
+          }
+        }),
+
+      updatePublishedDate: (episodeId, date, memberId = 'm1') =>
+        set((state) => {
+          const ep = state.episodes.find((e) => e.id === episodeId)
+          const oldDate = ep?.publishedDate || '(未设置)'
+          const newDate = date || '(清空)'
+          const episodes = state.episodes.map((e) =>
+            e.id === episodeId ? { ...e, publishedDate: date } : e,
+          )
+          return {
+            episodes: addLog(
+              episodes,
+              episodeId,
+              'published_date_changed',
+              memberId,
+              `发布日期调整：${oldDate} → ${newDate}`,
+            ),
+          }
+        }),
+
+      approveReview: (episodeId, commentId, memberId = 'm1') =>
+        set((state) => {
+          const ep = state.episodes.find((e) => e.id === episodeId)
+          const comment = ep?.reviews.find((c: ReviewComment) => c.id === commentId)
+          const episodes = state.episodes.map((e) =>
+            e.id === episodeId
+              ? {
+                  ...e,
+                  reviews: e.reviews.map((c: ReviewComment) =>
+                    c.id === commentId
+                      ? { ...c, resolved: true, resolution: 'approved' as const }
+                      : c,
+                  ),
+                }
+              : e,
+          )
+          return {
+            episodes: addLog(
+              episodes,
+              episodeId,
+              'review_approved',
+              memberId,
+              `审核通过：${comment?.content?.slice(0, 30) || ''}${(comment?.content?.length || 0) > 30 ? '...' : ''}`,
+            ),
+          }
+        }),
+
+      rejectReview: (episodeId, commentId, memberId = 'm1') =>
+        set((state) => {
+          const ep = state.episodes.find((e) => e.id === episodeId)
+          const comment = ep?.reviews.find((c: ReviewComment) => c.id === commentId)
+          const episodes = state.episodes.map((e) =>
+            e.id === episodeId
+              ? {
+                  ...e,
+                  reviews: e.reviews.map((c: ReviewComment) =>
+                    c.id === commentId
+                      ? { ...c, resolved: true, resolution: 'rejected' as const }
+                      : c,
+                  ),
+                }
+              : e,
+          )
+          return {
+            episodes: addLog(
+              episodes,
+              episodeId,
+              'review_rejected',
+              memberId,
+              `打回修改：${comment?.content?.slice(0, 30) || ''}${(comment?.content?.length || 0) > 30 ? '...' : ''}`,
             ),
           }
         }),

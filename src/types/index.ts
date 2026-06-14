@@ -105,6 +105,7 @@ export interface ReviewComment {
   content: string
   timestamp: string
   resolved: boolean
+  resolution?: 'approved' | 'rejected'
   replies: { id: string; authorId: string; content: string; timestamp: string }[]
 }
 
@@ -130,12 +131,25 @@ export interface ListenerData {
   updatedAt: string
 }
 
+export interface EpisodeGuestInfo {
+  guestId: string
+  role: string
+  status: 'pending' | 'confirmed' | 'declined' | 'reminded'
+  reminder: string
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type ActivityAction =
   | 'status_change'
   | 'review_added'
   | 'review_resolved'
+  | 'review_approved'
+  | 'review_rejected'
   | 'guest_added'
   | 'guest_removed'
+  | 'guest_updated'
   | 'outline_added'
   | 'outline_updated'
   | 'outline_deleted'
@@ -146,6 +160,7 @@ export type ActivityAction =
   | 'edit_todo_toggled'
   | 'mistake_toggled'
   | 'publish_check_updated'
+  | 'published_date_changed'
   | 'listener_data_added'
   | 'listener_data_updated'
   | 'listener_data_deleted'
@@ -200,6 +215,7 @@ export interface Episode {
   deadline: string
   assigneeIds: string[]
   listenerData: ListenerData[]
+  guestInfo: EpisodeGuestInfo[]
   activityLog: ActivityLog[]
   createdAt: string
   updatedAt: string
