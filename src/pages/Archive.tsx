@@ -21,6 +21,7 @@ import {
   Badge,
   Divider,
   Tooltip,
+  Space,
 } from 'antd'
 import {
   Search,
@@ -100,17 +101,20 @@ function aggregateListenerData(episodes: Episode[]) {
     .map(([date, data]) => ({ ...data, date }))
 }
 
-function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData, onExportData }: {
+function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData, onExportData, onAddData }: {
   episode: Episode | null
   open: boolean
   onClose: () => void
   onEditData: (episodeId: string, data: ListenerData) => void
   onDeleteData: (episodeId: string, dataId: string) => void
   onExportData: (episode: Episode) => void
+  onAddData: (episodeId: string, data: Omit<ListenerData, 'id' | 'createdAt' | 'updatedAt'>) => void
 }) {
   const getSeason = useStore((s) => s.getSeasonById)
   const getMember = useStore((s) => s.getMemberById)
   const getGuest = useStore((s) => s.getGuestById)
+  const [showAdd, setShowAdd] = useState(false)
+  const [addForm] = Form.useForm()
   if (!episode) return null
   const season = getSeason(episode.seasonId)
   const progress = getProgress(episode)
@@ -210,14 +214,24 @@ function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData, 
           title={<span className="font-semibold flex items-center gap-2"><ListOrdered size={16} />收听数据明细</span>}
           className="!rounded-2xl !border-0 !shadow-sm"
           extra={
-            <Button
-              size="small"
-              type="primary"
-              icon={<FileDown size={14} />}
-              onClick={() => onExportData(episode)}
-            >
-              导出报表
-            </Button>
+            <Space size="small">
+              <Button
+                size="small"
+                type="primary"
+                icon={<Plus size={14} />}
+                onClick={() => { addForm.resetFields(); setShowAdd(true) }}
+              >
+                新增数据
+              </Button>
+              <Button
+                size="small"
+                type="default"
+                icon={<FileDown size={14} />}
+                onClick={() => onExportData(episode)}
+              >
+                导出报表
+              </Button>
+            </Space>
           }
         >
           <Table
@@ -326,6 +340,72 @@ function EpisodeDetailModal({ episode, open, onClose, onEditData, onDeleteData, 
           <Button type="primary" icon={<FileText size={14} />}>查看制作记录</Button>
         </div>
       </div>
+
+      <Modal
+        open={showAdd}
+        onCancel={() => setShowAdd(false)}
+        title={<span className="font-semibold flex items-center gap-2"><Plus size={16} />新增收听数据</span>}
+        okText="保存"
+        cancelText="取消"
+        width={480}
+        onOk={() => addForm.validateFields().then((v) => {
+          onAddData(episode.id, {
+            date: v.date,
+            plays: Number(v.plays),
+            downloads: Number(v.downloads),
+            newSubs: Number(v.newSubs || 0),
+            avgListen: v.avgListen,
+            dropOff: Number(v.dropOff || 0),
+          })
+          setShowAdd(false)
+          addForm.resetFields()
+        })}
+      >
+        <Form form={addForm} layout="vertical" className="mt-2">
+          <Form.Item
+            name="date"
+            label="时间节点"
+            rules={[{ required: true, message: '请输入时间节点' }]}
+          >
+            <Input placeholder="如：Day 1、发布当日、第3天等" />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                name="plays"
+                label="播放量"
+                rules={[{ required: true, message: '请输入播放量' }]}
+              >
+                <Input type="number" placeholder="请输入" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="downloads"
+                label="下载量"
+                rules={[{ required: true, message: '请输入下载量' }]}
+              >
+                <Input type="number" placeholder="请输入" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="newSubs" label="新增订阅">
+                <Input type="number" placeholder="请输入" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="dropOff" label="跳出率(%)">
+                <Input type="number" placeholder="0-100" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="avgListen" label="平均收听时长">
+            <Input placeholder="如：18:45、45分钟" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Modal>
   )
 }
@@ -1025,7 +1105,7 @@ export default function Archive() {
           >
             <div className="space-y-3">
               {seasons.filter((s) => s.status !== 'planning').map((s) => {
-                const eps = publishedEpisodes.filter((e) => e.seasonId === s.id)
+                const eps = filteredEpisodes.filter((e) => e.seasonId === s.id)
                 const totalP = eps.reduce((sum, ep) => sum + ep.listenerData.reduce((s2, d) => s2 + d.plays, 0), 0)
                 return (
                   <div
@@ -1163,6 +1243,7 @@ export default function Archive() {
         onEditData={(epId, data) => { setEditData({ episodeId: epId, data }) }}
         onDeleteData={handleDeleteData}
         onExportData={handleExportData}
+        onAddData={handleAddData}
       />
       <AddDataModal open={addDataOpen} onClose={() => setAddDataOpen(false)} episodes={episodes} onAdd={handleAddData} />
       {editData && (

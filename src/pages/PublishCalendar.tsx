@@ -592,6 +592,15 @@ export default function PublishCalendar() {
                 </Tag>
                 <Tag className="!rounded-full !mb-0">
                   <Calendar size={11} className="inline mr-1" />
+                  计划发布 {formatDate(selectedEp.scheduledDate)}
+                </Tag>
+                <Tag
+                  className="!rounded-full !mb-0"
+                  color={selectedEp.publishedDate ? 'green' : 'default'}
+                >
+                  {selectedEp.publishedDate ? `✓ 已发布 ${formatDate(selectedEp.publishedDate)}` : '未设置发布日期'}
+                </Tag>
+                <Tag className="!rounded-full !mb-0">
                   截止 {formatDate(selectedEp.deadline)}
                 </Tag>
                 <Tag className="!rounded-full !mb-0">

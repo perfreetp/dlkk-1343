@@ -23,6 +23,7 @@ import {
   Divider,
   Upload,
   Rate,
+  Dropdown,
   App as AntApp,
   Tooltip,
   Segmented,
@@ -32,6 +33,7 @@ import {
   Space,
   DatePicker,
   Steps,
+  Popover,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -204,17 +206,20 @@ function EpisodeSidebar({
 }
 
 function EpisodeHeader({ episode }: { episode: Episode }) {
-  const { message } = AntApp.useApp()
+  const { message, modal } = AntApp.useApp()
   const members = useStore((s) => s.members)
   const guests = useStore((s) => s.guests)
   const season = useStore((s) => s.getSeasonById(episode.seasonId))
   const updateStatus = useStore((s) => s.updateEpisodeStatus)
+  const updatePublishedDate = useStore((s) => s.updatePublishedDate)
   const cfg = STATUS_CONFIG[episode.status]
   const progress = getProgress(episode)
   const currentStep = Math.max(0, STATUS_FLOW.indexOf(episode.status))
   const epGuests = episode.guestIds.map((id) => guests.find((g) => g.id === id)!).filter(Boolean)
   const epMembers = episode.assigneeIds.map((id) => members.find((m) => m.id === id)!).filter(Boolean)
   const dl = getDeadlineLabel(episode.deadline)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [tempDate, setTempDate] = useState<string | null>(null)
 
   return (
     <Card className="!rounded-2xl border-0 shadow-sm mb-4" styles={{ body: { padding: 24 } }}>
@@ -251,6 +256,43 @@ function EpisodeHeader({ episode }: { episode: Episode }) {
               <Calendar size={14} />
               计划发布: <b>{formatDate(episode.scheduledDate, 'MM月DD日')}</b>
             </div>
+            <Popover
+              open={showDatePicker}
+              onOpenChange={(v) => setShowDatePicker(v)}
+              trigger="click"
+              placement="bottomLeft"
+              content={
+                <div className="p-2">
+                  <DatePicker
+                    value={tempDate ? dayjs(tempDate) : null}
+                    onChange={(d) => {
+                      if (d) {
+                        const formatted = d.format('YYYY-MM-DD')
+                        setTempDate(formatted)
+                        updatePublishedDate(episode.id, formatted)
+                        message.success('发布日期已更新')
+                        setShowDatePicker(false)
+                      } else {
+                        updatePublishedDate(episode.id, null)
+                        setTempDate(null)
+                        message.info('已清空发布日期')
+                        setShowDatePicker(false)
+                      }
+                    }}
+                    allowClear
+                  />
+                </div>
+              }
+            >
+              <div
+                className="flex items-center gap-2 text-sm cursor-pointer hover:text-primary-600 transition"
+                onClick={() => setTempDate(episode.publishedDate)}
+              >
+                <Calendar size={14} />
+                发布日期: <b className={episode.publishedDate ? 'text-green-600' : 'text-gray-400'}>{episode.publishedDate ? formatDate(episode.publishedDate, 'MM月DD日') : '未设置（点击设置）'}</b>
+                {episode.publishedDate && <Tag color="green" className="!rounded-full !text-xs !mb-0 !px-2">已发布</Tag>}
+              </div>
+            </Popover>
           </div>
           {episode.topics.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-3">
@@ -277,6 +319,55 @@ function EpisodeHeader({ episode }: { episode: Episode }) {
               </Tooltip>
             ))}
           </div>
+          {episode.reviews.filter((r) => !r.resolved).length > 0 && (
+            <Dropdown
+              menu={{
+                items: episode.reviews
+                  .filter((r) => !r.resolved)
+                  .map((r, idx) => ({
+                    key: r.id,
+                    label: (
+                      <div className="py-1">
+                        <div className="text-xs text-gray-500 mb-1">审核意见 #{idx + 1}</div>
+                        <div className="text-sm text-gray-700 max-w-[260px] line-clamp-2">{r.content}</div>
+                        <div className="flex gap-1 mt-2">
+                          <Button
+                            size="small"
+                            type="primary"
+                            icon={<CheckCircle size={12} />}
+                            onClick={(e) => {
+                              e.domEvent.stopPropagation()
+                              useStore.getState().approveReview(episode.id, r.id)
+                              message.success('已审核通过')
+                            }}
+                          >
+                            通过
+                          </Button>
+                          <Button
+                            size="small"
+                            danger
+                            icon={<AlertCircle size={12} />}
+                            onClick={(e) => {
+                              e.domEvent.stopPropagation()
+                              useStore.getState().rejectReview(episode.id, r.id)
+                              message.warning('已打回修改')
+                            }}
+                          >
+                            打回
+                          </Button>
+                        </div>
+                      </div>
+                    ),
+                  })),
+              }}
+            >
+              <Badge count={episode.reviews.filter((r) => !r.resolved).length} offset={[-2, 2]}>
+                <Button size="large" icon={<MessageSquare size={16} />}>
+                  审核
+                </Button>
+              </Badge>
+            </Dropdown>
+          )}
           <Select
             value={episode.status}
             size="large"

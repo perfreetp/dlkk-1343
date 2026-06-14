@@ -130,8 +130,18 @@ export const useStore = create<StoreState>()(
 
       updateEpisodeStatus: (episodeId, status, memberId = 'm1') =>
         set((state) => {
+          const ep = state.episodes.find((e) => e.id === episodeId)
+          const oldStatus = ep?.status
+          const shouldSetPublishedDate = status === 'published' && !ep?.publishedDate
           const episodes = state.episodes.map((e) =>
-            e.id === episodeId ? { ...e, status, updatedAt: now() } : e,
+            e.id === episodeId
+              ? {
+                  ...e,
+                  status,
+                  publishedDate: shouldSetPublishedDate ? dayjs().format('YYYY-MM-DD') : e.publishedDate,
+                  updatedAt: now(),
+                }
+              : e,
           )
           return {
             episodes: addLog(
@@ -139,7 +149,7 @@ export const useStore = create<StoreState>()(
               episodeId,
               'status_change',
               memberId,
-              `状态变更：${status}`,
+              `状态变更：${oldStatus} → ${status}${shouldSetPublishedDate ? '，已同步设置发布日期' : ''}`,
               { status },
             ),
           }
