@@ -326,7 +326,7 @@ function AddDataModal({ open, onClose, episodes, onAdd }: {
 }
 
 export default function Archive() {
-  const { episodes, seasons, members, getSeasonById, getMemberById } = useStore()
+  const { episodes, seasons, members, getSeasonById, getMemberById, addListenerData } = useStore()
   const [seasonFilter, setSeasonFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
@@ -343,8 +343,18 @@ export default function Archive() {
       .sort((a, b) => (b.publishedDate || '').localeCompare(a.publishedDate || ''))
   }, [episodes])
 
+  const dateFilteredEpisodes = useMemo(() => {
+    if (!dateRange) return publishedEpisodes
+    const [start, end] = dateRange
+    return publishedEpisodes.filter((e) => {
+      if (!e.publishedDate) return false
+      const d = dayjs(e.publishedDate)
+      return d.isAfter(start.subtract(1, 'day')) && d.isBefore(end.add(1, 'day'))
+    })
+  }, [publishedEpisodes, dateRange])
+
   const filteredEpisodes = useMemo(() => {
-    let result = publishedEpisodes
+    let result = dateFilteredEpisodes
     if (seasonFilter !== 'all') result = result.filter((e) => e.seasonId === seasonFilter)
     if (statusFilter !== 'all') result = result.filter((e) => e.status === statusFilter)
     if (searchQuery.trim()) {
@@ -357,57 +367,54 @@ export default function Archive() {
       )
     }
     return result
-  }, [publishedEpisodes, seasonFilter, statusFilter, searchQuery])
+  }, [dateFilteredEpisodes, seasonFilter, statusFilter, searchQuery])
 
   const totalStats = useMemo(() => {
     let totalPlays = 0
     let totalDownloads = 0
     let totalNewSubs = 0
-    publishedEpisodes.forEach((ep) => {
+    dateFilteredEpisodes.forEach((ep) => {
       ep.listenerData.forEach((d) => {
         totalPlays += d.plays
         totalDownloads += d.downloads
         totalNewSubs += d.newSubs
       })
     })
-    return { totalPlays, totalDownloads, totalNewSubs, totalEpisodes: publishedEpisodes.length }
-  }, [publishedEpisodes])
+    return { totalPlays, totalDownloads, totalNewSubs, totalEpisodes: dateFilteredEpisodes.length }
+  }, [dateFilteredEpisodes])
 
-  const trendData = useMemo(() => aggregateListenerData(publishedEpisodes), [publishedEpisodes])
+  const trendData = useMemo(() => aggregateListenerData(dateFilteredEpisodes), [dateFilteredEpisodes])
 
   const topEpisodes = useMemo(() => {
-    return [...publishedEpisodes]
+    return [...dateFilteredEpisodes]
       .map((ep) => ({
         episode: ep,
         total: ep.listenerData.reduce((s, d) => s + d.plays, 0),
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 5)
-  }, [publishedEpisodes])
+  }, [dateFilteredEpisodes])
 
   const seasonStats = useMemo(() => {
     return seasons
       .filter((s) => s.status !== 'planning')
       .map((s) => {
-        const eps = publishedEpisodes.filter((e) => e.seasonId === s.id)
+        const eps = dateFilteredEpisodes.filter((e) => e.seasonId === s.id)
         const plays = eps.reduce((sum, ep) => sum + ep.listenerData.reduce((s2, d) => s2 + d.plays, 0), 0)
         const downloads = eps.reduce((sum, ep) => sum + ep.listenerData.reduce((s2, d) => s2 + d.downloads, 0), 0)
         return { name: s.name, episodes: eps.length, plays, downloads, color: s.color }
       })
-  }, [seasons, publishedEpisodes])
+  }, [seasons, dateFilteredEpisodes])
 
   const memberContrib = useMemo(() => {
     return members.map((m) => {
-      const count = publishedEpisodes.filter((e) => e.assigneeIds.includes(m.id)).length
+      const count = dateFilteredEpisodes.filter((e) => e.assigneeIds.includes(m.id)).length
       return { name: m.name, episodes: count, color: m.color }
     }).sort((a, b) => b.episodes - a.episodes)
-  }, [members, publishedEpisodes])
+  }, [members, dateFilteredEpisodes])
 
   const handleAddData = (episodeId: string, data: ListenerData) => {
-    const ep = episodes.find((e) => e.id === episodeId)
-    if (ep) {
-      ep.listenerData.push(data)
-    }
+    addListenerData(episodeId, data)
   }
 
   const columns: ColumnsType<Episode> = [

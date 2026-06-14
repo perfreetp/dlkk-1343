@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
@@ -36,7 +36,6 @@ function createWindow() {
 
   if (process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(url!)
-    win.webContents.openDevTools()
   } else {
     win.loadFile(indexHtml)
   }
@@ -46,6 +45,27 @@ function createWindow() {
     return { action: 'deny' }
   })
 }
+
+ipcMain.on('window:minimize', () => {
+  if (win) win.minimize()
+})
+
+ipcMain.on('window:maximize', () => {
+  if (!win) return
+  if (win.isMaximized()) {
+    win.unmaximize()
+  } else {
+    win.maximize()
+  }
+})
+
+ipcMain.on('window:close', () => {
+  if (win) win.close()
+})
+
+ipcMain.handle('window:isMaximized', () => {
+  return win ? win.isMaximized() : false
+})
 
 app.whenReady().then(() => {
   createWindow()

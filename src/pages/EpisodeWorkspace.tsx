@@ -415,11 +415,28 @@ function TopicPanel({ episode }: { episode: Episode }) {
 
 function GuestPanel({ episode }: { episode: Episode }) {
   const guests = useStore((s) => s.guests)
+  const addGuestToEpisode = useStore((s) => s.addGuestToEpisode)
+  const removeGuestFromEpisode = useStore((s) => s.removeGuestFromEpisode)
   const epGuests = episode.guestIds.map((id) => guests.find((g) => g.id === id)!).filter(Boolean)
   const others = guests.filter((g) => !episode.guestIds.includes(g.id))
+  const { message } = AntApp.useApp()
   const [showAll, setShowAll] = useState(false)
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null)
-  const displayOthers = showAll ? others : others.slice(0, 4)
+  const [searchKey, setSearchKey] = useState('')
+  const displayOthers = (showAll ? others : others.slice(0, 4)).filter(
+    (g) => !searchKey || g.name.includes(searchKey) || g.tags.some((t) => t.includes(searchKey)),
+  )
+
+  const handleInvite = (guestId: string) => {
+    addGuestToEpisode(episode.id, guestId)
+    setSelectedGuest(null)
+    message.success('嘉宾已加入本集')
+  }
+
+  const handleRemove = (guestId: string) => {
+    removeGuestFromEpisode(episode.id, guestId)
+    message.info('已从本集移除嘉宾')
+  }
 
   const GuestCard = ({ g, confirmed }: { g: Guest; confirmed: boolean }) => (
     <div
@@ -443,8 +460,19 @@ function GuestPanel({ episode }: { episode: Episode }) {
       <div className="flex flex-wrap gap-1 mb-3">
         {g.tags.slice(0, 4).map((t) => <Tag key={t} className="!rounded !text-xs !mb-0">#{t}</Tag>)}
       </div>
-      <div className="text-xs text-gray-500 flex items-center gap-1">
-        <History size={12} /> 已参与 {g.history.length} 期
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-gray-500 flex items-center gap-1">
+          <History size={12} /> 已参与 {g.history.length} 期
+        </div>
+        {confirmed ? (
+          <Button size="small" danger type="text" onClick={(e) => { e.stopPropagation(); handleRemove(g.id) }}>
+            移除
+          </Button>
+        ) : (
+          <Button size="small" type="primary" ghost onClick={(e) => { e.stopPropagation(); handleInvite(g.id) }}>
+            邀请
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -468,8 +496,14 @@ function GuestPanel({ episode }: { episode: Episode }) {
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2"><div className="w-1 h-5 rounded bg-gradient-to-b from-blue-400 to-indigo-600" />👥 嘉宾库 ({others.length})</div>
             <Space>
-              <Input.Search placeholder="搜索嘉宾..." style={{ width: 240 }} size="small" allowClear />
-              <Button type="primary" size="small" icon={<Plus size={14} />}>添加新嘉宾</Button>
+              <Input.Search
+                placeholder="搜索嘉宾..."
+                style={{ width: 240 }}
+                size="small"
+                allowClear
+                value={searchKey}
+                onChange={(e) => setSearchKey(e.target.value)}
+              />
             </Space>
           </div>
         }
@@ -494,8 +528,9 @@ function GuestPanel({ episode }: { episode: Episode }) {
         ) : ''}
         open={!!selectedGuest}
         onCancel={() => setSelectedGuest(null)}
-        onOk={() => setSelectedGuest(null)}
-        okText="邀请为本集嘉宾"
+        onOk={() => handleInvite(selectedGuest!.id)}
+        okText={episode.guestIds.includes(selectedGuest?.id || '') ? '已邀请' : '邀请为本集嘉宾'}
+        okButtonProps={{ disabled: episode.guestIds.includes(selectedGuest?.id || '') }}
         width={680}
       >
         {selectedGuest && (
@@ -529,10 +564,24 @@ function GuestPanel({ episode }: { episode: Episode }) {
 
 function OutlinePanel({ episode }: { episode: Episode }) {
   const toggleOutline = useStore((s) => s.toggleOutline)
+  const addOutlineItem = useStore((s) => s.addOutlineItem)
+  const { message } = AntApp.useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [form] = Form.useForm()
   const total = episode.outline.length
   const done = episode.outline.filter((o) => o.done).length
+
+  const handleAdd = (values: any) => {
+    addOutlineItem(episode.id, {
+      time: values.time || '',
+      title: values.title,
+      description: values.description || '',
+      notes: values.notes || '',
+    })
+    setShowAdd(false)
+    form.resetFields()
+    message.success('采访问题已添加')
+  }
 
   return (
     <Card className="!rounded-2xl border-0 shadow-sm"
@@ -563,7 +612,7 @@ function OutlinePanel({ episode }: { episode: Episode }) {
         />
       )}
       <Modal title="添加采访问题" open={showAdd} onCancel={() => setShowAdd(false)} onOk={() => form.submit()}>
-        <Form form={form} layout="vertical" onFinish={() => { setShowAdd(false); form.resetFields() }}>
+        <Form form={form} layout="vertical" onFinish={handleAdd}>
           <Form.Item label="时间点" name="time"><Input prefix={<Clock size={14} />} placeholder="例如 08:30，可选" /></Form.Item>
           <Form.Item label="问题标题" name="title" rules={[{ required: true }]}><Input placeholder="问题的一句话概括" /></Form.Item>
           <Form.Item label="详细描述" name="description" rules={[{ required: true }]}><TextArea rows={3} placeholder="引导方向、具体追问点..." /></Form.Item>
@@ -762,12 +811,26 @@ function MistakePanel({ episode }: { episode: Episode }) {
 
 function EditPanel({ episode }: { episode: Episode }) {
   const toggleEditTodo = useStore((s) => s.toggleEditTodo)
+  const addEditTodo = useStore((s) => s.addEditTodo)
   const members = useStore((s) => s.members)
   const { message } = AntApp.useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [form] = Form.useForm()
   const total = episode.editTodos.length
   const done = episode.editTodos.filter((t) => t.done).length
+
+  const handleAdd = (values: any) => {
+    addEditTodo(episode.id, {
+      content: values.content,
+      assigneeId: values.assigneeId,
+      deadline: values.deadline,
+      priority: values.priority,
+      done: false,
+    })
+    setShowAdd(false)
+    form.resetFields()
+    message.success('剪辑任务已添加')
+  }
 
   const columns: ColumnsType<EditTodo> = [
     { title: ' ', dataIndex: 'done', width: 48, render: (_, r) => <Checkbox checked={r.done} onChange={() => toggleEditTodo(episode.id, r.id)} /> },
@@ -835,7 +898,7 @@ function EditPanel({ episode }: { episode: Episode }) {
       <Table columns={columns} dataSource={episode.editTodos} rowKey="id" size="middle" pagination={false}
         rowClassName={(r) => (r.done ? 'opacity-60' : '')} locale={{ emptyText: <Empty description="暂无剪辑任务" /> }} />
       <Modal title="添加剪辑任务" open={showAdd} onCancel={() => setShowAdd(false)} onOk={() => form.submit()}>
-        <Form form={form} layout="vertical" onFinish={() => { setShowAdd(false); form.resetFields(); message.success('任务已添加') }}>
+        <Form form={form} layout="vertical" onFinish={handleAdd}>
           <Form.Item label="任务内容" name="content" rules={[{ required: true }]}>
             <TextArea rows={2} placeholder="需要做的具体事情" />
           </Form.Item>

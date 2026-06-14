@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Layout, Menu, Avatar, Dropdown, Input, Badge } from 'antd'
 import {
   LayoutDashboard,
@@ -40,6 +40,33 @@ const MENU_ITEMS = [
 ]
 
 function TitleBar() {
+  const [isMaximized, setIsMaximized] = useState(false)
+
+  useEffect(() => {
+    const w = (window as any).windowAPI
+    if (w && w.isMaximized) {
+      w.isMaximized().then((res: boolean) => setIsMaximized(res))
+    }
+  }, [])
+
+  const handleMinimize = () => {
+    const w = (window as any).windowAPI
+    if (w && w.minimize) w.minimize()
+  }
+
+  const handleToggleMaximize = () => {
+    const w = (window as any).windowAPI
+    if (w && w.toggleMaximize) {
+      w.toggleMaximize()
+      setIsMaximized(!isMaximized)
+    }
+  }
+
+  const handleClose = () => {
+    const w = (window as any).windowAPI
+    if (w && w.close) w.close()
+  }
+
   return (
     <div className="h-10 bg-[#16213e] flex items-center justify-between px-4 drag-region text-sm text-gray-400">
       <div className="flex items-center gap-2">
@@ -48,13 +75,34 @@ function TitleBar() {
         <span className="text-xs text-gray-500 ml-2">播客团队工作平台</span>
       </div>
       <div className="flex items-center gap-1 no-drag-region">
-        <button className="w-10 h-10 flex items-center justify-center hover:bg-white/10 transition">
+        <button
+          onClick={handleMinimize}
+          className="w-10 h-10 flex items-center justify-center hover:bg-white/10 transition"
+          title="最小化"
+        >
           <Minus size={16} />
         </button>
-        <button className="w-10 h-10 flex items-center justify-center hover:bg-white/10 transition">
-          <Square size={14} />
+        <button
+          onClick={handleToggleMaximize}
+          className="w-10 h-10 flex items-center justify-center hover:bg-white/10 transition"
+          title={isMaximized ? '还原' : '最大化'}
+        >
+          {isMaximized ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+              <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+              <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+              <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+            </svg>
+          ) : (
+            <Square size={14} />
+          )}
         </button>
-        <button className="w-10 h-10 flex items-center justify-center hover:bg-red-500/80 transition text-red-300 hover:text-white">
+        <button
+          onClick={handleClose}
+          className="w-10 h-10 flex items-center justify-center hover:bg-red-500/80 transition text-red-300 hover:text-white"
+          title="关闭"
+        >
           <X size={16} />
         </button>
       </div>
